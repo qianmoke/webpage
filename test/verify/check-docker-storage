@@ -1,0 +1,247 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# This file is part of Cockpit.
+#
+# Copyright (C) 2016 Red Hat, Inc.
+#
+# Cockpit is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation; either version 2.1 of the License, or
+# (at your option) any later version.
+#
+# Cockpit is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+
+import parent
+from testlib import *
+
+# The Docker Storage Setup behaves differently depending on
+# whether the "atomic" utility is recent enough, on whether or not
+# the OS disk is part of a volume group, and on the storage driver
+# that Docker uses by default.
+#
+# These predicates here encode what we expect right now.  If
+# conditions on the distributions change, they need to be updated, but
+# the rest of the test should be able to stay the same.
+
+# Returns whether Cockpit can add disks and reset the pool.
+#
+def can_manage(machine):
+    return machine.image in [ "fedora-25",
+                              "fedora-26",
+                              "fedora-testing",
+                              "fedora-24",
+                              "rhel-7",
+                              "centos-7",
+                              "rhel-atomic",
+                              "fedora-atomic",
+                              "continuous-atomic" ]
+
+# Returns whether Docker uses devmapper with loopback by default.
+# Cockpit will force the user away from this.
+#
+def initially_loopbacked(machine):
+    # The Atomics leave space in the root volume group for a
+    # proper thin pool.
+    if machine.atomic_image:
+        return False
+
+    # Debian, Ubuntu, and Fedora 26 use the overlayfs driver by default.
+    if machine.image in [ "debian-stable", "debian-testing", "ubuntu-1604", "ubuntu-stable", "fedora-26" ]:
+        return False
+
+    # The rest don't have space in the root volume group, or don't
+    # have a root volume group at all.
+    return True
+
+# Returns whether the pool is initially in a volume group or not.  If
+# not, Cockpit will create a dedicated volume group when the first
+# device is added.
+#
+def initially_without_vgroup(machine):
+    return machine.image in [ "fedora-24", "rhel-7" ]
+
+# The Atomic variants can't build their own packages, so we build in
+# their non-Atomic siblings.  For example, fedora-atomic is built
+# in fedora-25
+def get_build_image(test_os):
+    build_os = test_os
+    if test_os == "fedora-atomic":
+        build_os = "fedora-25"
+    elif test_os == "rhel-atomic":
+        build_os = "rhel-7"
+    elif test_os == "continuous-atomic":
+        build_os = "centos-7"
+    return build_os
+
+@skipImage("No cockpit-docker on i386", "fedora-i386")
+class TestDockerStorage(MachineCase):
+
+    def testOverview(self):
+        b = self.browser
+        m = self.machine
+
+        m.execute("systemctl start docker")
+        self.login_and_go("/docker")
+
+        b.wait_present("#containers-storage-details .free-text")
+        b.wait_text_not("#containers-storage-details .free-text", "")
+
+        if can_manage(m):
+            b.wait_present("#containers-storage-details a")
+
+    def testDevmapper(self):
+        m = self.machine
+
+        # On the Atomics, we use two machines: one for running
+        # cockpit-ws, and one whose docker storage pool is managed.
+        # We can't do that both on a single machine since resetting
+        # the pool would kill the cockpit-ws container.
+
+        if self.machine.atomic_image:
+            # We want to use a non-Atomic machine as the login machine
+            # and the build machine that matches the current Atomic is suitable
+            # since we can use the same set of built packages
+            login_machine = self.new_machine(machine_key='login',
+                                             image=get_build_image(self.machine.image))
+            login_machine.start()
+            login_machine.wait_boot()
+            b = self.new_browser(login_machine.address)
+        else:
+            login_machine = self.machine
+            b = self.browser
+
+        if can_manage(m):
+            # Allow docker-storage-setup to be happy with our very small disks
+            m.write("/etc/sysconfig/docker-storage-setup",
+                    'MIN_DATA_SIZE=80M\n')
+
+        def check_loopback(val):
+            if val:
+                m.execute("losetup -l -O BACK-FILE | grep -q /var/lib/docker")
+            else:
+                m.execute("! (losetup -l -O BACK-FILE | grep -q /var/lib/docker)")
+
+        def check_atomic_vgroup(val):
+            if val:
+                m.execute("vgs atomic-storage")
+            else:
+                m.execute("! vgs atomic-storage")
+
+        m.execute("systemctl start docker")
+
+        check_loopback(initially_loopbacked(m))
+        check_atomic_vgroup(False)
+
+        if login_machine == self.machine:
+            self.login_and_go("/docker#/storage")
+        else:
+            login_machine.start_cockpit()
+            b.login_and_go(None)
+
+            # XXX - This should be simpler.
+            #
+            # Navigating straight to "/docker#/storage" doesn't seem
+            # to work when the troubleshoot dialog shows up in the
+            # middle: the hash part is lost.  First going to "/docker"
+            # and then navigating to "#/storage" after adding the
+            # machine causes a reload of the page, which is awkward.
+            # So we first go to "/system", add the machine via the
+            # dialog, and then go straight to "/docker#/storage".
+            #
+            # Both the loss of the hash part and the page reload look
+            # like bugs.
+
+            b.switch_to_top()
+            b.go("/@%s/system" % m.address)
+            b.wait_visible("#machine-troubleshoot")
+            b.click('#machine-troubleshoot')
+            b.wait_popup('troubleshoot-dialog')
+            b.wait_present("#troubleshoot-dialog .btn-primary:not([disabled])")
+            b.wait_text('#troubleshoot-dialog .btn-primary', "Add")
+            b.click('#troubleshoot-dialog .btn-primary')
+            b.wait_in_text('#troubleshoot-dialog', "Fingerprint")
+            b.click('#troubleshoot-dialog .btn-primary')
+            b.wait_popdown('troubleshoot-dialog')
+            b.enter_page("/system", host=m.address)
+            b.switch_to_top()
+            b.go("/@%s/docker#/storage" % m.address)
+            b.enter_page("/docker", host=m.address)
+            b.wait_visible("#storage")
+
+        if not can_manage(m):
+            b.wait_visible("#storage-unsupported")
+            return
+
+        # Add a disk
+
+        m.add_disk("100M", serial="DISK1")
+        b.wait_in_text("#storage-drives", "DISK1")
+
+        b.click("#storage-drives tr:contains(DISK1)")
+        b.click("#storage-drives .btn-primary")
+        b.wait_present(".modal-dialog:contains(Add Additional Storage)")
+        b.wait_in_text(".modal-dialog:contains(Add Additional Storage)", "DISK1")
+        if initially_loopbacked(m) or initially_without_vgroup(m):
+            b.wait_in_text(".modal-dialog:contains(Add Additional Storage) .alert-message",
+                           "The storage pool will be reset")
+        b.click(".modal-dialog:contains(Add Additional Storage) .btn-danger")
+        b.wait_not_present(".modal-dialog:contains(Add Additional Storage)")
+        b.wait_not_in_text("#storage-drives", "DISK1")
+
+        check_loopback(False)
+        check_atomic_vgroup(initially_without_vgroup(m))
+
+        # Add a second disk
+
+        m.add_disk("100M", serial="DISK2")
+        b.wait_in_text("#storage-drives", "DISK2")
+        b.click("#storage-drives tr:contains(DISK2)")
+        b.click("#storage-drives .btn-primary")
+        b.wait_present(".modal-dialog:contains(Add Additional Storage)")
+        b.wait_in_text(".modal-dialog:contains(Add Additional Storage)", "DISK2")
+        b.wait_not_in_text(".modal-dialog:contains(Add Additional Storage)", "DISK1")
+        b.wait_not_present(".modal-dialog:contains(Add Additional Storage) .alert-message")
+        b.click(".modal-dialog:contains(Add Additional Storage) .btn-danger")
+        b.wait_not_present(".modal-dialog:contains(Add Additional Storage)")
+        b.wait_not_in_text("#storage-drives", "DISK2")
+
+        # Reset
+
+        b.click("#storage-reset")
+        b.wait_present(".modal-dialog:contains(Reset Storage Pool)")
+        b.click(".modal-dialog:contains(Reset Storage Pool) .btn-danger")
+        b.wait_not_present(".modal-dialog:contains(Reset Storage Pool)")
+
+        check_loopback(initially_loopbacked(m))
+        check_atomic_vgroup(False)
+
+        b.wait_in_text("#storage-drives", "DISK1")
+        b.wait_in_text("#storage-drives", "DISK2")
+
+        # Add both disks at the same time
+
+        b.click("#storage-drives tr:contains(DISK1)")
+        b.click("#storage-drives tr:contains(DISK2)")
+        b.click("#storage-drives .btn-primary")
+        b.wait_present(".modal-dialog:contains(Add Additional Storage)")
+        b.wait_in_text(".modal-dialog:contains(Add Additional Storage)", "DISK1")
+        b.wait_in_text(".modal-dialog:contains(Add Additional Storage)", "DISK2")
+        if initially_loopbacked(m) or initially_without_vgroup(m):
+            b.wait_in_text(".modal-dialog:contains(Add Additional Storage) .alert-message",
+                           "The storage pool will be reset")
+        b.click(".modal-dialog:contains(Add Additional Storage) .btn-danger")
+        b.wait_not_in_text("#storage-drives", "DISK1")
+        b.wait_not_in_text("#storage-drives", "DISK2")
+
+        check_loopback(False)
+        check_atomic_vgroup(initially_without_vgroup(m))
+
+if __name__ == '__main__':
+    test_main()

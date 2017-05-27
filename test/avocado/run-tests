@@ -1,0 +1,260 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# This file is part of Cockpit.
+#
+# Copyright (C) 2015 Red Hat, Inc.
+#
+# Cockpit is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation; either version 2.1 of the License, or
+# (at your option) any later version.
+#
+# Cockpit is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+
+import argparse
+import json
+import os
+import shutil
+import sys
+import subprocess
+import glob
+import re
+
+# we use symlinked files
+# the directory structure breaks on the second run with .pyc files
+sys.dont_write_bytecode = True
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+
+from common import testlib
+from common import testvm
+
+machine_test_dir = "/tmp/avocado_tests"
+
+# this is where the avocado results on the test machine will be stored
+avocado_results_dir = "/root/avocado_results"
+
+# this is where we publish logs on the local machine
+arg_attachments_dir = os.environ.get("TEST_ATTACHMENTS", None)
+if not arg_attachments_dir:
+    arg_attachments_dir = os.getcwd()
+if not os.path.exists(arg_attachments_dir):
+    os.makedirs(arg_attachments_dir)
+
+def prepare_avocado_tests(machine):
+    """ Upload all avocado related files and create the results directory
+    """
+    machine.execute(command="mkdir -p " + avocado_results_dir)
+    machine.upload(["avocado"], machine_test_dir)
+    machine.execute(command="ls -l /tmp/avocado_tests")
+
+def tap_output(machine):
+    try:
+        json_info = json.loads(machine.execute(command="cat " + os.path.join(avocado_results_dir, "latest/results.json"), quiet=True))
+    except Exception as e:
+        print "ERROR: Unable to fetch JSON from remote machine:", os.path.join(avocado_results_dir, "latest/results.json")
+        print e
+        return None
+    print "\nTAP output -------------------------"
+    print "1..%s" % len(json_info['tests'])
+    counter = 1
+    for t in json_info['tests']:
+        test_status = t['status']
+        name_search = re.search("([^/]+):(.*)$", t['test'])
+        test_name = "%s (%s)" % (name_search.group(1), name_search.group(2))
+        test_log = t['logfile']
+        test_time_string = "duration: %ds" % t['time']
+        print "# ----------------------------------------------------------------------"
+        print "# %s %s" % (test_name, test_time_string)
+        print "#"
+        try:
+            print machine.execute(command="cat " + test_log, quiet=True)
+        except Exception as e:
+            print "ERROR: Unable to fetch testlog from remote machine:", test_log
+            print e
+        print "# TEST LOG END -------"
+        if test_status == 'PASS':
+            print "ok %s %s %s" % (counter, test_name, test_time_string)
+        else:
+            print "not ok %s %s %s" % (counter, test_name, test_time_string)
+        counter = counter + 1
+    if len(json_info['tests']) != json_info['pass']:
+        print "# %d TESTS FAILED duration: %ds" % (len(json_info['tests']) - json_info['pass'], json_info['time'])
+    else:
+        print "# TESTS PASSED duration: %ds" %  json_info['time']
+
+def run_avocado_tests(machine, avocado_tests, print_failed=True, env=[]):
+    """ Execute avocado on the machine with the passed environment variables and run
+        the specified tests. For example:
+        run_avocado(machine,
+                    ["checklogin-basic.py", "checklogin-raw.py"],
+                    ["HUB=" + self.selenium.address, "BROWSER=firefox"]
+                   )
+        Return success of the tests (True: all passed, False: at least one failed)
+        If 'print_failed' is True, attempt to print a list of failed tests
+    """
+    return_state = True
+    cmd_parts = env + ["avocado run",
+                 "--job-results-dir " + avocado_results_dir,
+                 ' '.join([machine_test_dir + os.sep + x for x in avocado_tests]),
+                 ">&2"
+                 ]
+
+    try:
+        machine.execute(" ".join(cmd_parts))
+    except:
+        if print_failed:
+            # try to get the list of failed tests
+            try:
+                failed_tests_info = machine.execute(
+                        command="cat " + os.path.join(avocado_results_dir, "latest/results.json"),
+                        quiet=True
+                    )
+                machine.execute("cp -v *.png %s/ 2>/dev/null || true" % avocado_results_dir)
+                failed_tests = json.loads(failed_tests_info)
+                for t in failed_tests['tests']:
+                    test_status = t['status']
+                    if test_status != 'PASS':
+                        test_name = t['test']
+                        if test_name.startswith(machine_test_dir + '/'):
+                            test_name = test_name[(len(machine_test_dir) + 1):]
+                        fail_reason = t['fail_reason']
+                        print "[" + test_status + "] " + test_name + " (" + fail_reason + ")"
+            except:
+                print "Unable to show avocado test result summary"
+        return_state = False
+    tap_output(machine)
+    return return_state
+
+def copy_avocado_logs(machine, title):
+    if machine and machine.address:
+        # check if the remote directory exists (if it doesn't, we want to quit silently)
+        test_command = "if test -d '{0}'; then echo exists; fi".format(avocado_results_dir)
+        if "exists" not in machine.execute(command=test_command,quiet=True):
+            return
+
+        # get the screenshots first and move them on the guest so they won't get archived
+        remote_screenshots = os.path.join(avocado_results_dir, "*.png")
+        remote_archive_dir = os.path.split(avocado_results_dir)[0]
+        test_command_screenshots = """for f in "{0}/"*.png; do [ -e  "$f" ] && echo "exists"; break; done""".format(avocado_results_dir)
+        if "exists" in machine.execute(command=test_command_screenshots,quiet=True):
+            machine.download(remote_screenshots, arg_attachments_dir)
+
+        # create a compressed archive on the remote host
+        remote_archive = os.path.join(remote_archive_dir, "avocado_logs.tar.gz")
+        machine.execute("cd {0} && tar cfz {1} {2} --exclude='*.png'".format(remote_archive_dir, remote_archive, os.path.split(avocado_results_dir)[1]))
+
+        # download and attach to our test
+        local_archive = os.path.join(arg_attachments_dir, "{0}-{1}.avocado.tar.gz".format(machine.address, title))
+        machine.download(remote_archive, local_archive)
+
+def wait_for_selenium_running(machine, host, port=4444):
+    WAIT_SELENIUM_RUNNING = """#!/bin/sh
+until curl -s --connect-timeout 1 http://%s:%d >/dev/null; do
+sleep 0.5;
+done;
+""" % (host, port)
+    with testvm.stdchannel_redirected(sys.stdout, os.devnull):
+        with testvm.Timeout(seconds=30, error_message="Timeout while waiting for selenium to start"):
+            machine.execute(script=WAIT_SELENIUM_RUNNING)
+
+def run_avocado(avocado_tests, verbose, browser, download_logs):
+    use_selenium = (browser != 'none')
+    machine = testvm.VirtMachine(testvm.DEFAULT_IMAGE, verbose=verbose, label="avocado")
+    selenium = testvm.VirtMachine(image="selenium", label="selenium", verbose=verbose) if use_selenium else None
+
+    try:
+        # just start the machine without waiting for it to boot, get the ip address later
+        machine.start(wait_for_ip=False)
+        if selenium:
+            # actually wait here, because starting selenium takes a while
+            selenium.start()
+            selenium.wait_boot()
+
+            # start selenium on the server
+            selenium.upload([ "avocado/selenium_start.sh"], "/root")
+            selenium.execute(command="/root/selenium_start.sh")
+
+        machine.wait_boot()
+        machine.start_cockpit()
+
+        machine.execute("adduser test")
+        machine.execute("echo superhardpasswordtest5554 | passwd --stdin test")
+        machine.execute("usermod -a -G wheel test")
+        machine.execute("echo 'test        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers")
+        machine.execute("sed -i 's/^Defaults.*requiretty/#&/g' /etc/sudoers")
+        machine.execute("echo 'Defaults !requiretty' >> /etc/sudoers")
+
+        if selenium:
+            wait_for_selenium_running(machine, selenium.address)
+
+        prepare_avocado_tests(machine)
+
+        # Now actually run the tests
+        selenium_address = selenium.address if selenium else ""
+        env = [ "HUB=" + selenium_address, "GUEST=" + machine.address, "BROWSER=" + browser ]
+        success = run_avocado_tests(machine, avocado_tests, env=env)
+
+        if not success:
+            copy_avocado_logs(machine, "FAILED")
+        elif download_logs:
+            copy_avocado_logs(machine, "PASSED")
+
+        return success
+    finally:
+        machine.kill()
+        if selenium:
+            selenium.kill()
+
+def main():
+    parser = argparse.ArgumentParser(description='Run Cockpit Avocado test(s)')
+    parser.add_argument('-v', '--verbose', dest="verbosity", action='store_true',
+                        help='Verbose output')
+    parser.add_argument('-q', '--quick', action='store_true', help='Build faster')
+    parser.add_argument("-b", "--browser", choices=['none', 'firefox', 'chrome'],
+                    default='none',
+                    help="selenium browser choice - in case of none, selenium isn't started")
+    parser.add_argument("-s", "--selenium-tests", dest='selenium_tests', action='store_true',
+                        help="Run known browser/selenium tests")
+    parser.add_argument("-t", "--tests", dest='regular_tests', action='store_true',
+                        help="Run known regular (non-selenium) tests")
+    parser.add_argument("-l", "--logs", dest='download_logs', action='store_true',
+                        help="Always download avocado logs, even on success")
+    parser.add_argument('tests', nargs='*')
+
+    opts = parser.parse_args()
+
+    regular_tests = [ "checklogin-basic.py", "checklogin-raw.py" ]
+    browser_tests = [ "selenium-base.py", "selenium-storage.py", "selenium-docker.py", "selenium-sosreport.py" ]
+
+    if opts.regular_tests:
+        opts.tests += regular_tests
+    if opts.selenium_tests:
+        opts.tests += browser_tests
+
+    # if we don't have a browser but are supposed to run selenium related tests, fail
+    if opts.browser is 'none':
+        for t in browser_tests:
+            if t in opts.tests:
+                sys.stderr.write("Unable to run test {0} because browser isn't set.\n".format(t))
+                return 1
+
+    if len(opts.tests) is 0:
+        sys.stderr.write("No tests specified.\n")
+        return 0
+
+    if run_avocado(opts.tests, opts.verbosity, opts.browser, opts.download_logs):
+        return 0
+    else:
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

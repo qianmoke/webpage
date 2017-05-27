@@ -1,0 +1,30 @@
+[WebService]
+{{ if .origins }}
+Origins = {{.origins}}
+{{end}}
+{{if .is_registry }}
+LoginTitle = Atomic Registry
+Shell = /shell/simple.html
+{{else}}
+Shell = /shell/stub.html
+{{if .is_openshift }}
+ProtocolHeader = X-Forwarded-Proto
+LoginTitle = Openshift Cockpit
+{{else}}
+LoginTitle = Kubernetes Cockpit
+
+[Negotiate]
+Command = {{.login_command}}
+{{end}}
+{{end}}
+
+[Basic]
+Command = {{.login_command}}
+
+{{if .oauth_url }}
+[Bearer]
+Command = {{.login_command}}
+
+[OAuth]
+Url = {{.oauth_url}}
+{{end}}

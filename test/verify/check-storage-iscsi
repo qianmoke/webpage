@@ -1,0 +1,155 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# This file is part of Cockpit.
+#
+# Copyright (C) 2015 Red Hat, Inc.
+#
+# Cockpit is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation; either version 2.1 of the License, or
+# (at your option) any later version.
+#
+# Cockpit is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+
+import parent
+from testlib import *
+from storagelib import *
+
+@skipImage("storaged-iscsi not packaged", "centos-7", "debian-testing")
+@skipImage("UDisks doesn't have support for iSCSI", "debian-stable", "ubuntu-1604", "ubuntu-stable")
+class TestStorage(StorageCase):
+    def testISCSI(self):
+        m = self.machine
+        b = self.browser
+        b.wait_timeout(120)
+
+        # rhel-7 is missing the iSCSI session API
+        if m.image == "rhel-7":
+            self.login_and_go("/storage")
+            # The optional parts of the UI have been configured
+            # properly before the page is shown, so we can now
+            # reliably check for the visibility of the iSCSI panel.
+            # It won't show up later asynchronously.
+            b.wait_not_visible("#iscsi-sessions")
+            return
+
+        target_iqn = "iqn.2015-09.cockpit.lan"
+        initiator_iqn = "iqn.2015-10.cockpit.lan"
+
+        # Increase the iSCSI timeouts for heavy load during our testing
+        m.execute("""sed -i 's|^\(node\..*log.*_timeout = \).*|\\1 60|' /etc/iscsi/iscsid.conf""")
+
+        # Setup a iSCSI target with authentication for discovery and join
+        #
+        # HACK - some versions of targetcli crash when TERM is not set
+        #        and stdout is not a tty.
+        #
+        #        https://bugzilla.redhat.com/show_bug.cgi?id=1441121
+
+        m.execute("""
+                  export TERM=dumb
+                  targetcli /backstores/ramdisk create test 50M
+                  targetcli /iscsi set discovery_auth enable=1 userid=admin password=foobar
+                  targetcli /iscsi create %(tgt)s
+                  targetcli /iscsi/%(tgt)s/tpg1/luns create /backstores/ramdisk/test
+                  targetcli /iscsi/%(tgt)s/tpg1 set attribute authentication=1
+                  targetcli /iscsi/%(tgt)s/tpg1/acls create %(ini)s
+                  targetcli /iscsi/%(tgt)s/tpg1/acls/%(ini)s set auth userid=admin password=barfoo
+                  """ % { "tgt": target_iqn, "ini": initiator_iqn })
+        # m.execute("targetcli ls")
+
+        self.login_and_go("/storage")
+
+        # Set initiator IQN
+        #
+        orig_iqn = m.execute("sed </etc/iscsi/initiatorname.iscsi -e 's/^.*=//'").rstrip()
+        b.wait_visible('[data-action="edit-iscsi"]')
+        b.click('[data-action="edit-iscsi"]')
+        self.dialog(expect = { "name": orig_iqn },
+                    values = { "name": initiator_iqn })
+        new_iqn = m.execute("sed </etc/iscsi/initiatorname.iscsi -e 's/^.*=//'").rstrip()
+        self.assertEqual(new_iqn, initiator_iqn)
+
+        # Access the target
+
+        b.wait_visible('[data-action="add-iscsi-portal"]')
+        b.click('[data-action="add-iscsi-portal"]')
+
+        self.dialog_wait_open()
+        self.dialog_set_val("address", "127.0.0.1")
+        self.dialog_set_val("username", "admin")
+        self.dialog_set_val("password", "foobar")
+        self.dialog_apply()
+        # The dialog closes and a new dialog opens but we can't get
+        # inbetween that, so we just wait for the new fields to
+        # appear.
+        b.wait_present(self.dialog_field("target"))
+        b.wait_in_text(self.dialog_field("target"), target_iqn)
+        self.dialog_apply()
+        # Login will fail and a new dialog opens
+        b.wait_present(self.dialog_field("username"))
+        self.dialog_wait_val("username", "admin")
+        self.dialog_wait_val("password", "foobar")
+        self.dialog_set_val("password", "barfoo")
+        self.dialog_apply()
+        self.dialog_wait_close()
+
+        b.wait_in_text('#iscsi-sessions', target_iqn)
+        b.wait_in_text('#drives', "LIO-ORG test")
+
+        # Make a filesystem on it to prove that the disk really works.
+
+        b.click('#drives tr:contains("LIO-ORG test")')
+        b.wait_visible('#storage-detail')
+        self.content_row_wait_in_col(1, 1, "Unrecognized Data")
+        self.content_tab_action(1, 1, "Format")
+        self.dialog({ "type": "ext4",
+                      "name": "FILESYSTEM" })
+        self.content_row_wait_in_col(1, 1, "ext4 File System")
+        b.click('#storage-detail .breadcrumb a')
+        b.wait_visible('#storage')
+
+        # Add the target a second time, just to check that the sorting function works
+        b.click('[data-action="add-iscsi-portal"]')
+        self.dialog_wait_open()
+        self.dialog_set_val("address", m.address)
+        self.dialog_set_val("username", "admin")
+        self.dialog_set_val("password", "foobar")
+        self.dialog_apply()
+        # The dialog closes and a new dialog opens but we can't get
+        # inbetween that, so we just wait for the new fields to
+        # appear.
+        b.wait_present(self.dialog_field("target"))
+        b.wait_in_text(self.dialog_field("target"), target_iqn)
+        self.dialog_apply()
+        # Login will fail and a new dialog opens
+        b.wait_present(self.dialog_field("username"))
+        self.dialog_wait_val("username", "admin")
+        self.dialog_wait_val("password", "foobar")
+        self.dialog_set_val("password", "barfoo")
+        self.dialog_apply()
+        self.dialog_wait_close()
+
+        b.wait_in_text('#iscsi-sessions', m.address)
+
+        b.click('#iscsi-sessions .arm-button')
+        b.wait_visible('#iscsi-sessions tr:contains(127.0.0.1) button[data-iscsi-session-remove]')
+        b.click('#iscsi-sessions tr:contains(127.0.0.1) button[data-iscsi-session-remove]')
+        b.wait_not_present('#iscsi-sessions tr:contains(127.0.0.1)')
+
+        b.click('#iscsi-sessions .arm-button')
+        b.wait_visible('#iscsi-sessions tr:contains(%s) button[data-iscsi-session-remove]' % (m.address))
+        b.click('#iscsi-sessions tr:contains(%s) button[data-iscsi-session-remove]' % (m.address))
+        b.wait_not_present('#iscsi-sessions tr:contains(%s)' % (m.address))
+
+        b.wait_not_in_text('#drives', "LIO-ORG test")
+
+if __name__ == '__main__':
+    test_main()

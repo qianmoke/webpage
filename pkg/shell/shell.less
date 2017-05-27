@@ -1,0 +1,649 @@
+/*
+ * This file is part of Cockpit.
+ *
+ * Copyright (C) 2013 Red Hat, Inc.
+ *
+ * Cockpit is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * Cockpit is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/* ---------------------------------------------------------------------------------------------------- */
+
+@import (less) "/page.css";
+@import (less) "/table.css";
+@import "variables.less";
+@import "switcher.less";
+@import "active-pages.less";
+
+/* Hacks on top for now */
+
+html, body {
+    height: 100%;
+}
+
+html.index-page body {
+    overflow: hidden;
+}
+
+.curtains-ct {
+    top: auto;
+}
+
+#dashboard-add {
+    height: 28px;
+    width: 28px;
+}
+
+#dashboard-hosts .list-group-item {
+    border-left-width: 7px;
+    border-left-style: solid;
+    border-top: none;
+    position: relative;
+    outline: 0;
+}
+
+#dashboard-hosts .list-group-item:before {
+    content: "";
+    position: absolute;
+    border-top: 1px solid #BABABA;
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    height: 1px;
+}
+
+#dashboard-hosts .list-group-item:first-child:before {
+    border-top-color: transparent;
+}
+
+#dashboard-hosts button {
+    height: 28px;
+    width: 28px;
+    padding: 8px;
+    float: right;
+    margin-left: 10px;
+}
+
+#dashboard-hosts button.btn.pficon {
+    padding-top: 5px;
+    font-size: 14px;
+}
+
+/* Per server buttons not visible by default */
+#dashboard-hosts .list-group button {
+    margin-top: 2px;
+    display: none;
+}
+
+/* When panel is editable, then buttons are visible */
+#dashboard-hosts.editable .list-group button {
+    display: block;
+}
+
+#dashboard-hosts.editable .list-group-item:hover {
+    background-color: #FFF;
+    cursor: auto;
+}
+
+#dashboard-hosts .spinner {
+    float: left;
+    margin: 6px 13px 4px 3px;
+}
+
+#dashboard-hosts .list-group-item span.reconnecting {
+    color: #888;
+    display: inline;
+    padding-left: 20px;
+}
+
+.host-avatar {
+    border-radius: 3px;
+    margin-right: 10px;
+    width: 32px;
+    height: 32px;
+}
+
+#dashboard-hosts .list-group-item .host-avatar {
+    float: left;
+    border-style: none;
+}
+
+#dashboard-hosts .list-group-item span {
+    margin-right: 76px;
+    display: block;
+    padding-top: 6px;
+    padding-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#dashboard-hosts .list-group-item div.os {
+    padding-top: 6px;
+    padding-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    color: #888;
+    float: right;
+}
+
+#dashboard-toolbar > div.dropdown {
+    display: inline-block;
+}
+
+#dashboard-toolbar .dropdown-toggle span {
+    display: inline-block;
+    width: 6em;
+    text-align: left;
+    padding-left: 5px;
+}
+
+@media (max-width: 400px) {
+    #dashboard-hosts .list-group-item div.os {
+        display: none;
+    }
+    #dashboard-hosts .list-group-item span.reconnecting {
+        display: none;
+    }
+}
+
+
+.zoom-controls {
+    display: none;
+}
+
+.show-zoom-controls .zoom-controls {
+    display: block;
+}
+
+.show-zoom-cursor .zoomable-plot {
+    cursor: ew-resize;
+}
+
+.dashboard-plot {
+    margin-bottom: 10px;
+    height: 250px;
+}
+
+#host-edit-color {
+    width:100px;
+    height:26px;
+}
+
+#host-edit-color-popover .popover-content {
+    width: 220px;
+}
+
+#host-edit-color-popover .color-cell {
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    margin: 2px;
+}
+
+#host-edit-avatar {
+    margin-top: 10px;
+}
+
+#host-edit-avatar canvas:hover,
+#host-edit-color:hover,
+#host-edit-color-popover .color-cell:hover {
+    cursor: pointer;
+    box-shadow: inset 0px 0px 0px 1px #7BB2DD;
+}
+
+#host-edit-apply {
+    min-width: 55px;
+}
+
+#host-edit-file-input {
+    display: none;
+}
+
+/* Make the time range buttons equal width */
+
+#dashboard-range-buttons button {
+    width: 70px;
+}
+
+#sync-users {
+    max-height: 126px;
+    overflow-y: auto;
+    overflow-x: none;
+    display: block;
+    border: 1px solid #BABABA;
+    margin-bottom: 15px;
+}
+
+#sync-users table.table {
+    margin-bottom: 0;
+}
+
+#sync-users .table > tbody > tr:first-child > td {
+    border-top: none;
+}
+
+#sync-users .center-spinner {
+    padding: 15px;
+}
+
+#add-unknown-host pre {
+    margin: 0;
+}
+
+#edit-machine-port {
+    width: 100px;
+}
+
+/* navbar styles */
+
+.navbar-pf .navbar-toggle {
+    color: white;
+    font-size: 17px;
+    padding: 3px 10px;
+    line-height: 1;
+}
+
+.navbar-primary .btn-group {
+    margin: 5px 0;
+}
+
+.navbar-primary .btn-group .btn {
+    background-image:  linear-gradient(to bottom, #1D1D1D 0%, #030303 100%);
+    padding: 5px 20px;
+    color: #fff;
+    border-color: #494949;
+}
+
+.navbar-primary .btn-group .btn:hover {
+    background-image: linear-gradient(to bottom, #2f2f2f 0%, #232323 100%);
+}
+
+.navbar-primary .btn-group .btn.active {
+    background-image: linear-gradient(to bottom, #2f2fFF 0%, #2323FF 100%);
+}
+
+
+.navbar-primary .btn-group > .btn:first-child:not(:last-child):not(.dropdown-toggle) {
+    border-radius: 5px 0 0 5px;
+}
+
+.navbar-primary .btn-group > .btn:last-child:not(:first-child):not(.dropdown-toggle) {
+    border-radius: 0 5px 5px 0;
+}
+
+.navbar-primary .btn-group > .btn:only-child:not(.dropdown-toggle) {
+    border-radius: 5px 5px 5px 5px;
+}
+
+/* Style a search box in navigation bar */
+
+.navbar-primary .navbar-form {
+    margin: 7px;
+    box-shadow: none;
+}
+
+@media (min-width: 320px) and (max-width: 767px) {
+    .navbar-primary .navbar-form {
+    margin: 0;
+    padding: 0;
+    }
+}
+
+.navbar-default .navbar-form {
+    border-color: transparent;
+}
+
+.nav > li[hidden] {
+    display: none;
+}
+
+.navbar-advanced {
+    display: none;
+}
+
+.credential-lock > * {
+    display: none !important;
+}
+
+.credential-lock.credential-locked > *:first-child {
+    display: block !important;
+}
+
+.credential-lock.credential-unlocked > *:last-child {
+    display: block !important;
+}
+
+@-webkit-keyframes blink {
+    0% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes blink {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.credential-blink {
+    -webkit-animation: blink 1.2s 1 linear;
+    animation: blink 1.2s 1 linear;
+}
+
+li.credential-lock {
+    span { padding-left: 1em; }
+}
+
+/* For now this is not clickable */
+li.credential-lock > a:first-child {
+    cursor: default;
+}
+
+
+/* The server avatar */
+#server-avatar {
+    width:       128px;
+    height:      128px;
+    margin-left:  21px;     /* This centers it in #server-nav-column. */
+    border-radius: 5px;
+}
+
+.server-graph .flot-y-axis .flot-tick-label {
+    margin-right: 5px;
+}
+
+/*
+ * The oops status in the navbar, used when an unhandled exception
+ * occurs.
+ */
+
+.oops-status {
+    color: red;
+    font-weight: bold;
+}
+
+.slider {
+    margin: 10px 10px;
+    height: 5px;
+    white-space: nowrap;
+    font-size: 0px;
+    background-color: #e7e7e7;
+    cursor: pointer;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+}
+
+.slider-warning {
+    background-color: #d4a096;
+}
+
+.slider-bar {
+    position: relative;
+    height: 5px;
+}
+
+.slider > .slider-bar > .slider-bar {
+    border-right: 3px solid white;
+    height: 5px;
+    position: relative;
+}
+
+.slider > .slider-bar > .slider-bar {
+    display: inline-block;
+}
+
+.slider > div:first-child {
+    float: left;
+    background-color: #0099d3;
+}
+
+.slider-disabled > div:first-child {
+    cursor: auto;
+    background-color: #e7e7e7;
+}
+
+.slider-thumb {
+    position: absolute;
+    border-radius: 9px;
+    background-color: #0099d3;
+    width: 18px;
+    height: 18px;
+    top: -6px;
+    right: -9px;
+    content: '.';
+    cursor: pointer;
+    border: 1px solid #267da1;
+    z-index: 1;
+}
+
+.slider-disabled .slider-thumb {
+    background-color: #e7e7e7;
+    border: 1px solid #d7d7d7;
+    cursor: auto;
+}
+
+/* server overview dashboard */
+#server .info-table-ct button {
+  max-width: 300px;
+}
+
+#server .info-table-ct td:first-child {
+    max-width: 50%
+}
+
+#server .info-table-ct {
+    width: 100%;
+}
+
+@media (min-width: 992px) {
+    #server .info-table-ct {
+        table-layout: fixed;
+        width: 100%;
+        min-width: 220px;
+    }
+
+  /* server overview dashboard */
+  #server .info-table-ct-container td button {
+      max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  /* server overview dashboard */
+  #server .info-table-ct-container td button {
+      max-width: 200px;
+  }
+}
+
+#connecting {
+    height: 100%;
+    background-color: #eeeeec;
+    text-align: center;
+    padding-top: 120px;
+}
+
+/* workaround: make text red for select if contained in has-error, not in patternfly */
+.has-error > .bootstrap-select > button > span {
+    color: #A94442;
+}
+
+/* System information */
+
+#system-info-domain-list {
+    padding:0px;
+    padding-top:15px;
+    border: none;
+}
+
+#systime-date-input {
+    display: inline;
+    width: 150px;
+}
+
+#systime-time-hours,
+#systime-time-minutes {
+    display: inline;
+    width: 50px;
+}
+
+/* index page */
+
+.oops-status {
+    color: red;
+    font-weight: bold;
+}
+
+#display-language-list {
+    width: 100%;
+}
+
+#display-language-list option {
+   padding: 10px;
+}
+
+iframe.container-frame {
+    display: none;
+    border: none;
+    width: 100%;
+}
+
+/* Credentials dialog */
+
+#credentials-dialog .modal-body {
+    max-height: 500px;
+}
+
+#credentials-dialog .btn-onoff-ct .btn {
+    padding-top: 1px;
+    padding-bottom: 1px;
+    height: 24px;
+    line-height: 24px;
+}
+
+table.credential-listing {
+    margin-top: 0px;
+    width: 100%;
+}
+
+.credential-listing thead td {
+    padding-left: 15px;
+    padding-bottom: 15px;
+}
+
+.credential-data {
+    word-wrap: break-word;
+    word-break: break-all;
+}
+
+.credential-listing dd,
+.credential-listing dt {
+    padding-top: 3px;
+    min-height: 26px;
+}
+
+.credential-listing dt {
+    min-width: 80px;
+    max-width: 100px;
+}
+
+.credential-listing input[type='password'] {
+    width: 300px;
+}
+
+
+.credential-listing textarea {
+    color: #222 !important;
+}
+
+.credential-listing dt label {
+    margin-bottom: 0px;
+}
+
+tbody .credential-unlock {
+    display: none;
+}
+
+tbody.unlock .credential-panel {
+    display: none !important;
+}
+
+tbody.unlock .credential-unlock {
+    display: block;
+}
+
+.banned {
+    color: #ff0000;
+    font-size: 75px;
+    line-height: 75px;
+    float: left;
+    padding-right: 15px;
+}
+
+.listing-ct-body .alert {
+    border: none;
+    margin: 0px 0px 10px 0px;
+    padding: 0px;
+    background-color: transparent;
+}
+
+.listing-ct-body .alert .fa {
+    position: relative;
+    left: 0px;
+    top: 3px;
+    padding-right: 5px;
+}
+
+.spinner-white {
+  border-bottom: 4px solid rgba(255, 255, 255, 0.25);
+  border-left: 4px solid rgba(255, 255, 255, 0.25);
+  border-right: 4px solid rgba(255, 255, 255, 0.25);
+  border-top: 4px solid rgba(255, 255, 255, 0.75);
+}
+
+
+/* Scrollable modal body, needs max-height set elsewhere */
+.modal-scrollable {
+    overflow-y: auto;
+    margin-right: 7px;
+    padding-right: 8px;
+    margin-top: 15px;
+    padding-top: 0px;
+}
+
+/* allow text only branding */
+.navbar-pf .navbar-brand {
+    text-transform: uppercase;
+    margin: 0 8px;
+    height: 25px;
+    padding: 2px 0;
+}
+
+.navbar-pf .navbar-brand:hover {
+    color: #F1F1F1;
+}

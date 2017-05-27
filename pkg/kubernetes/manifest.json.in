@@ -1,0 +1,13 @@
+{
+    "version": "@VERSION@",
+    "requires": {
+	"cockpit": "137.x"
+    },
+
+    "dashboard": {
+        "index": {
+            "label": "Cluster",
+            "order": 20
+        }
+    }
+}

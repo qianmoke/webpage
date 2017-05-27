@@ -1,0 +1,327 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# This file is part of Cockpit.
+#
+# Copyright (C) 2013 Red Hat, Inc.
+#
+# Cockpit is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation; either version 2.1 of the License, or
+# (at your option) any later version.
+#
+# Cockpit is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+
+import parent
+from testlib import *
+import time
+import subprocess
+
+os_release = """
+NAME="Foobar Adventure Linux Server"
+VERSION="2.0 (Day of Doom)"
+ID="foobar"
+VERSION_ID="2.0"
+PRETTY_NAME="Foobar Adventure Linux Server 2.0 (Day of Doom)"
+"""
+
+def ssh_reconnect(machine, timeout_sec=120):
+    start_time = time.time()
+    error = None
+    while (time.time() - start_time) < timeout_sec:
+        try:
+            machine.execute("true", quiet=True)
+            return
+        except Exception, e:
+            error = e
+        time.sleep(0.5)
+
+    raise error
+
+class TestSystemInfo(MachineCase):
+
+    def testBasic(self):
+        m = self.machine
+        b = self.browser
+
+        # /etc/os-release might be a symlink and file watching doesn't
+        # follow symlinks, so we remove it and then create a regular
+        # file.
+        #
+        # In addition hostnamed does not expect os-release to change so
+        # we force a restart. Usually any such changes to os-release are
+        # expected to happen during reboot, or picked up after a reboot.
+        #
+        # subscription-manager also screws with os-release so set it
+        # to immutable
+        #
+        m.execute("rm /etc/os-release")
+        m.write("/etc/os-release", os_release)
+        m.execute("chattr +i /etc/os-release && (systemctl restart systemd-hostnamed || systemctl restart hostnamed)")
+
+        self.login_and_go("/system")
+
+        b.wait_present('#system_information_os_text')
+        b.wait_visible('#system_information_os_text')
+
+        mid = m.execute("cat /etc/machine-id")
+        b.wait_present('#system_machine_id')
+        b.wait_text('#system_machine_id', mid)
+
+        # Generate a new rsa key and change the config
+        m.execute("ssh-keygen -f /etc/ssh/weirdname -t rsa -N ''")
+        m.execute("chmod 600 /etc/ssh/weirdname")
+        m.execute("restorecon /etc/ssh/weirdname || true")
+
+        supports_alt = False
+        try:
+            m.execute(command="ssh-keygen -l -f /etc/ssh/weirdname -E md5", quiet=True)
+            supports_alt = True
+        except subprocess.CalledProcessError:
+            pass
+
+        if supports_alt:
+            new_default = m.execute("ssh-keygen -l -f /etc/ssh/weirdname -E md5 | cut -d' ' -f2")
+            new_alt = m.execute("ssh-keygen -l -f /etc/ssh/weirdname -E sha256 | cut -d' ' -f2")
+            old_default = m.execute("ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key -E md5 | cut -d' ' -f2")
+            old_alt = m.execute("ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key -E sha256 | cut -d' ' -f2")
+        else:
+            new_default = m.execute("ssh-keygen -l -f /etc/ssh/weirdname | cut -d' ' -f2")
+            new_alt = None
+            old_default = m.execute("ssh-keygen -l -f /etc/ssh/ssh_host_rsa_key | cut -d' ' -f2")
+            old_alt = None
+
+        b.wait_present("#system-ssh-keys-link")
+        b.click("#system-ssh-keys-link")
+        b.wait_popup("system_information_ssh_keys")
+        b.wait_present("#system_information_ssh_keys .spinner")
+        b.wait_not_visible("#system_information_ssh_keys .spinner")
+        b.wait_visible("#system_information_ssh_keys .content")
+        b.wait_present("#system_information_ssh_keys .list-group")
+        b.wait_in_text("#system_information_ssh_keys .list-group", "ED25519")
+        b.wait_in_text("#system_information_ssh_keys .list-group", "RSA")
+        b.wait_in_text("#system_information_ssh_keys .list-group", "ECDSA")
+        b.wait_not_in_text("#system_information_ssh_keys .list-group", new_default)
+        b.wait_in_text("#system_information_ssh_keys .list-group", old_default)
+        if supports_alt:
+            b.wait_not_in_text("#system_information_ssh_keys .list-group", new_alt)
+            b.wait_in_text("#system_information_ssh_keys .list-group", old_alt)
+
+        b.click("#system_information_ssh_keys button")
+        b.wait_popdown("system_information_ssh_keys")
+
+        # Change ssh config and restart
+        m.execute("sed -i 's,.*HostKey *,#,' /etc/ssh/sshd_config")
+        m.execute("echo '' >> /etc/ssh/sshd_config")
+        m.execute("echo 'HostKey /etc/ssh/weirdname' >> /etc/ssh/sshd_config")
+
+        # Restart sshd but stop socket so we can make sure we are restarted
+        m.execute("( ! systemctl is-active sshd.socket || systemctl stop sshd.socket) && systemctl restart sshd.service")
+        ssh_reconnect(m)
+
+        b.click("#system-ssh-keys-link")
+        b.wait_popup("system_information_ssh_keys")
+        b.wait_present("#system_information_ssh_keys .spinner")
+        b.wait_not_visible("#system_information_ssh_keys .spinner")
+        b.wait_visible("#system_information_ssh_keys .content")
+        b.wait_present("#system_information_ssh_keys .list-group")
+        b.wait_not_in_text("#system_information_ssh_keys .list-group", "ED25519")
+        b.wait_in_text("#system_information_ssh_keys .list-group", "RSA")
+        b.wait_not_in_text("#system_information_ssh_keys .list-group", "ECDSA")
+        b.wait_in_text("#system_information_ssh_keys .list-group", new_default)
+        b.wait_not_in_text("#system_information_ssh_keys .list-group", old_default)
+        if supports_alt:
+            b.wait_not_in_text("#system_information_ssh_keys .list-group", old_alt)
+            b.wait_in_text("#system_information_ssh_keys .list-group", new_alt)
+
+        b.wait_text('#system_information_os_text',
+                    "Foobar Adventure Linux Server 2.0 (Day of Doom)")
+
+        m.execute("hostnamectl set-hostname --pretty 'Adventure Box'")
+        b.wait_in_text('#system_information_hostname_button', "Adventure Box")
+
+        b.click('#system_information_hostname_button')
+        b.wait_popup("system_information_change_hostname")
+        b.wait_val("#sich-pretty-hostname", "Adventure Box")
+        b.set_val("#sich-hostname", "host1.cockpit.lan")
+        b.click("#system_information_change_hostname button:contains('Change')")
+        b.wait_popdown("system_information_change_hostname")
+
+        if m.atomic_image:
+            b.wait_present('#system-ostree-version')
+            b.wait_visible('#system-ostree-version')
+            b.wait_text('#system-ostree-version-link', "cockpit-base.1")
+        else:
+            b.wait_not_visible("#system-ostree-version")
+
+        b.wait_text('#system_information_hostname_button', "Adventure Box (host1.cockpit.lan)")
+        # HACK /usr/bin/hostname output is delayed in systemd v208, so that DBus gets notified early
+        # this issue is resolved in systemd v219
+        tries_left = 5
+        current_hostname = ""
+        while tries_left > 0:
+            current_hostname = m.execute("hostname")
+            if current_hostname == "host1.cockpit.lan\n":
+                break
+            # wait a bit and try again
+            time.sleep(1)
+            tries_left = tries_left - 1
+
+        self.assertEqual(current_hostname, "host1.cockpit.lan\n")
+
+    def testTime(self):
+        m = self.machine
+        b = self.browser
+
+        network_time_prefix = "Network time on"
+        if m.image in {"debian-stable", "rhel-7", "centos-7", "rhel-atomic", "continuous-atomic"}:
+            network_time_prefix = "NTP enabled"
+
+        # make sure system is on expected timezone EEST
+        m.execute("timedatectl set-timezone Europe/Helsinki")
+
+        # Something gets confused when systemd-timesyncd isn't
+        # available.  This is harmless.
+        #
+        self.allow_journal_messages("org.freedesktop.systemd1: couldn't get property org.freedesktop.systemd1.Service ExecMain at /org/freedesktop/systemd1/unit/systemd_2dtimedated_2eservice: GDBus.Error:org.freedesktop.DBus.Error.UnknownProperty: Unknown property")
+
+        self.login_and_go("/system")
+
+        # Make sure the date loads
+        b.wait_text_not("#system_information_systime_button", "")
+
+        # Change the date
+        b.click("#system_information_systime_button")
+        b.wait_popup("system_information_change_systime")
+        b.click("#change_systime button");
+        b.click("#change_systime li[value=manual_time] a");
+        b.wait_in_text("#change_systime button", "Manually");
+        b.set_val("#systime-date-input", "2020-01-24")
+        b.set_val("#systime-time-hours", "08")
+        b.set_val("#systime-time-minutes", "03")
+        b.click("#systime-apply-button")
+        b.wait_popdown("system_information_change_systime")
+
+        b.wait_text("#system_information_systime_button", "2020-01-24 08:03")
+
+        self.assertIn("%s: no" % network_time_prefix, m.execute("timedatectl"))
+        self.assertIn("Fri Jan 24 08:03:", m.execute("date"))
+        self.assertIn("EET 2020\n", m.execute("date"))
+
+        # Set to NTP
+        b.click("#system_information_systime_button")
+        b.wait_popup("system_information_change_systime")
+        b.click("#change_systime button");
+        b.click("#change_systime li[value=ntp_time] a");
+        b.wait_in_text("#change_systime button", "Automatically using NTP");
+        b.click("#systime-apply-button")
+        b.wait_popdown("system_information_change_systime")
+
+        self.assertIn("%s: yes" % network_time_prefix, m.execute("timedatectl"))
+
+        # Change the date
+        b.click("#system_information_systime_button")
+        b.wait_popup("system_information_change_systime")
+        b.click("#change_systime button");
+        b.click("#change_systime li[value=manual_time] a");
+        b.wait_in_text("#change_systime button", "Manually");
+        b.set_val("#systime-date-input", "2018-06-04")
+        b.set_val("#systime-time-hours", "06")
+        b.set_val("#systime-time-minutes", "34")
+        b.click("#systime-apply-button")
+        b.wait_popdown("system_information_change_systime")
+
+        self.assertIn("%s: no" % network_time_prefix, m.execute("timedatectl"))
+        self.assertIn("Mon Jun  4 06:34:", m.execute("date"))
+        self.assertIn("EEST 2018\n", m.execute("date"))
+
+    @skipImage("No NTP servers config", "centos-7", "continuous-atomic", "rhel-7", "rhel-atomic")
+    def testTimeServers(self):
+        m = self.machine
+        b = self.browser
+
+        conf = "/etc/systemd/timesyncd.conf.d/50-cockpit.conf"
+
+        # Use systemd-timedated as the provider of
+        # org.freedesktop.timedate1 instead of timedatex.
+        m.execute("systemctl disable timedatex; systemctl stop timedatex; systemctl unmask systemd-timedated")
+
+        self.login_and_go("/system")
+
+        # Wait until everything is ready to go...
+        b.wait_text_not("#system_information_systime_button", "")
+
+        # Add two NTP servers.  We can't expect the servers to be used, so
+        # we only test that they get added.
+        b.click("#system_information_systime_button")
+        b.wait_popup("system_information_change_systime")
+        b.click("#change_systime button");
+        b.click("#change_systime li[value=ntp_time_custom] a");
+        b.wait_in_text("#change_systime button", "Automatically using specific NTP servers");
+        b.wait_visible("#systime-ntp-servers")
+        b.wait_present("#systime-ntp-servers form:nth-child(1) input")
+        b.set_val("#systime-ntp-servers form:nth-child(1) input", "0.pool.ntp.org")
+        b.click('#systime-ntp-servers form:nth-child(1) button[data-action="add"]')
+        b.wait_present("#systime-ntp-servers form:nth-child(2) input")
+        b.set_val("#systime-ntp-servers form:nth-child(2) input", "1.pool.ntp.org")
+        b.click("#systime-apply-button")
+        b.wait_popdown("system_information_change_systime")
+
+        self.assertIn("0.pool.ntp.org", m.execute("grep '^NTP=' %s" % conf))
+        self.assertIn("1.pool.ntp.org", m.execute("grep '^NTP=' %s" % conf))
+
+        # Set conf from the outside, check that we pick that up, and
+        # switch to default servers.
+        m.write(conf, "[Time]\nNTP=2.pool.ntp.org\n")
+        b.click("#system_information_systime_button")
+        b.wait_popup("system_information_change_systime")
+        b.wait_visible("#systime-ntp-servers")
+        b.wait_present("#systime-ntp-servers form:nth-child(1)")
+        b.wait_val("#systime-ntp-servers form:nth-child(1) input", "2.pool.ntp.org")
+        b.click("#change_systime button");
+        b.click("#change_systime li[value=ntp_time] a");
+        b.wait_in_text("#change_systime button", "Automatically using NTP");
+        b.wait_not_visible("#systime-ntp-servers")
+        b.click("#systime-apply-button")
+        b.wait_popdown("system_information_change_systime")
+
+        self.assertIn("2.pool.ntp.org", m.execute("grep '^#NTP=' %s" % conf))
+
+    def testMotd(self):
+        m = self.machine
+        b = self.browser
+
+        m.execute("rm -f /etc/motd")
+
+        self.login_and_go("/system")
+        b.wait_present('#motd-box[data-stable=yes]')
+        b.wait_not_visible('#motd-box')
+
+        m.execute("echo Hello >/etc/motd")
+        b.wait_visible('#motd-box')
+        b.wait_in_text('#motd', "Hello")
+
+        b.click('#motd-box button.close')
+        b.wait_not_visible('#motd-box')
+
+        # motd should stay dismissed after a reload
+        b.reload()
+        b.enter_page("/system")
+        b.wait_present('#motd-box[data-stable=yes]')
+        b.wait_not_visible('#motd-box')
+
+        m.execute("echo Hello again >/etc/motd")
+        b.wait_visible('#motd-box')
+        b.wait_in_text('#motd', "Hello again")
+
+        # because of the reload
+        self.allow_restart_journal_messages()
+
+if __name__ == '__main__':
+    test_main()

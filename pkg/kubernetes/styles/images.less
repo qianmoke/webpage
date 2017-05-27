@@ -1,0 +1,68 @@
+@import (less) "../../../bower_components/registry-image-widgets/dist/image-widgets.css";
+
+@tag-border: @link-color;
+
+table.images-listing {
+    max-width: 2000px;
+    min-width: 85%;
+
+    tbody:hover {
+        background-color: #d4edfa;
+    }
+
+    tbody.open .listing-ct-panel .listing-ct-body {
+        border-right: 1px solid #ccc;
+    }
+
+    tbody.open tr.listing-ct-panel td div.listing-ct-head {
+        border-right: 1px solid #ccc;
+    }
+
+    thead {
+        th {
+            border-top: none;
+        }
+    }
+
+    tr.listing-ct-item {
+
+        td.tag-label {
+            vertical-align: top;
+            background: linear-gradient(90deg, transparent 10px, @tag-border 10px, @tag-border 12px, transparent 12px);
+        }
+
+        td.listing-ct-toggle:hover + td.tag-label {
+            background-color: #ededed
+        }
+
+        border-top: none;
+        border-bottom: none;
+    }
+
+    tbody.first {
+        tr.tag-item td {
+            padding-top: 20px;
+        }
+    }
+
+    tbody.last {
+	tr.listing-ct-item.tag-item td.tag-label {
+            background-size: 100% 20px;
+            background-repeat: no-repeat;
+        }
+    }
+
+    tr.imagestream-item {
+        border-top: 1px solid @gray-lighter;
+
+        th, td {
+            border-bottom: 2px solid @tag-border;
+            font-size: 14px;
+            padding-bottom: 5px;
+        }
+    }
+
+    tr.listing-ct-item tt {
+        color: @metadata-color;
+    }
+}

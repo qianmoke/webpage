@@ -1,0 +1,42 @@
+{
+  "name": "CockpitDevelopmentDependencies",
+  "description": "Cockpit isn't a Node package, these are devel time deps, not needed to build tarball either",
+  "private": true,
+  "optionalDependencies": {
+    "phantomjs-prebuilt": "~2.1.14"
+  },
+  "devDependencies": {
+    "babel-core": "~5.8.38",
+    "babel-loader": "~5.4.2",
+    "babel-eslint": "~7.1.1",
+    "bower": "~1.7.9",
+    "clean-css": "~3.4.20",
+    "copy-webpack-plugin": "~3.0.1",
+    "css-loader": "~0.23.1",
+    "eslint": "^3.0.0",
+    "eslint-loader":  "~1.6.1",
+    "eslint-plugin-react": "~6.9.0",
+    "exports-loader": "~0.6.3",
+    "extend": "~3.0.0",
+    "extract-text-webpack-plugin": "~1.0.1",
+    "htmlparser": "~1.7.7",
+    "html-minifier": "~0.7.2",
+    "html-webpack-plugin": "~2.22.0",
+    "imports-loader": "~0.6.5",
+    "jed": "~1.1.0",
+    "jshint": "~2.9.1",
+    "jshint-loader": "~0.8.3",
+    "less": "~2.6.0",
+    "less-loader": "~2.2.3",
+    "ng-cache-loader": "0.0.16",
+    "po2json": "~0.4.1",
+    "promise": "~7.1.1",
+    "raw-loader": "~0.5.1",
+    "sizzle": "~2.1.0",
+    "stdio": "~0.2.7",
+    "strict-loader": "~1.1.0",
+    "style-loader": "~0.13.1",
+    "uglify-js": "~2.6.2",
+    "webpack": "~1.13.2"
+  }
+}

@@ -1,0 +1,67 @@
+#!/usr/bin/env python
+
+import glob
+import imp
+import os
+import string
+import subprocess
+import sys
+import traceback
+import unittest
+
+import parent
+import testlib
+import testvm
+
+sys.dont_write_bytecode = True
+
+EXCLUDE = [
+    'check-example'
+]
+
+def check_valid(filename):
+    name = os.path.basename(filename)
+    if name in EXCLUDE:
+        return None
+    allowed = string.ascii_letters + string.digits + '-_'
+    if not all(c in allowed for c in name):
+        return None
+    return name.replace("-", "_")
+
+def run(opts):
+    # Now actually load the tests, any modules that start with "check-*"
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    for filename in glob.glob(os.path.join(os.path.dirname(__file__), "check-*")):
+        name = check_valid(filename)
+        if not name or not os.path.isfile(filename):
+            continue
+        with open(filename, 'rb') as fp:
+            module = imp.load_module(name, fp, filename, ("", "rb", imp.PY_SOURCE))
+            suite.addTest(loader.loadTestsFromModule(module))
+
+    # And now load new testlib, and run all the tests we got
+    return testlib.test_main(options=opts, suite=suite)
+
+def main():
+    parser = testlib.arg_parser()
+    parser.add_argument('--publish', action='store', help="Unused")
+    parser.add_argument('image', action='store', nargs='?',
+                        help='The operating system image to verify against')
+    opts = parser.parse_args()
+
+    image = opts.image or testvm.DEFAULT_IMAGE
+
+    revision = os.environ.get("TEST_REVISION")
+    if not revision:
+        revision = subprocess.check_output([ "git", "rev-parse", "HEAD" ]).strip()
+
+    # Tell any subprocesses what we are testing
+    os.environ["TEST_REVISION"] = revision
+    testvm.DEFAULT_IMAGE = image
+    os.environ["TEST_OS"] = image
+
+    return run(opts)
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -1,0 +1,112 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# This file is part of Cockpit.
+#
+# Copyright (C) 2015 Red Hat, Inc.
+#
+# Cockpit is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation; either version 2.1 of the License, or
+# (at your option) any later version.
+#
+# Cockpit is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Cockpit; If not, see <http://www.gnu.org/licenses/>.
+
+import parent
+from testlib import *
+
+@skipImage("No tuned packaged", "debian-stable", "debian-testing", "fedora-atomic", "ubuntu-1604", "ubuntu-stable")
+class TestTuned(MachineCase):
+    def testBasic(self):
+        b = self.browser
+        m = self.machine
+
+        recommended_profile = "virtual-guest"
+        if m.image == "rhel-atomic":
+            recommended_profile = "atomic-guest"
+
+        # Stop tuned in case it is running by default, as on RHEL.
+
+        m.execute("systemctl stop tuned")
+        m.execute("systemctl disable tuned")
+
+        # Login and check initial state
+
+        self.login_and_go("/system")
+
+        b.wait_text('#system-info-performance a.action-trigger', "none")
+        b.wait_attr('#system-info-performance [data-toggle="popover"]', 'data-content',
+                    "Tuned is not running")
+
+        # Start tuned manually and hit the info button to force an
+        # update.  The recommended profile will be activated
+        # automatically.
+
+        m.execute("systemctl start tuned")
+        b.click('#system-info-performance [data-toggle="popover"]')
+        b.wait_text('#system-info-performance a.action-trigger', recommended_profile)
+        b.wait_attr('#system-info-performance [data-toggle="popover"]', 'data-content',
+                    "This system is using the recommended profile")
+
+        # Switch the profile
+
+        b.click('#system-info-performance a.action-trigger')
+        title_selector = "h4.modal-title:contains('Change Performance Profile')"
+        b.wait_present(title_selector)
+        body_selector = ".modal-dialog:contains('Change Performance Profile')"
+        b.wait_present("{0} .list-group-item.active p".format(body_selector))
+
+        # Make sure we see the recommended profile and its badge
+        b.wait_in_text("{0} .list-group-item.active p".format(body_selector), recommended_profile)
+        b.wait_present("{0} .list-group-item.active span.badge:contains('recommended')".format(body_selector))
+
+        b.click("{0} .list-group-item p:contains('balanced')".format(body_selector))
+        b.wait_present("{0} .list-group-item.active p:contains('balanced')".format(body_selector))
+
+        b.click("{0} button.apply".format(body_selector))
+        b.wait_not_present(title_selector)
+
+        b.wait_text('#system-info-performance a.action-trigger', "balanced")
+        b.wait_attr('#system-info-performance [data-toggle="popover"]', 'data-content',
+                    "This system is using a custom profile")
+
+        # Check the status of tuned, it should show the profile
+        output = m.execute("tuned-adm active 2>&1 || true")
+        self.assertIn("balanced", output)
+        output = m.execute("systemctl status tuned")
+        self.assertIn("enabled;", output)
+
+        # Now disable tuned
+        b.click('#system-info-performance a.action-trigger')
+        b.wait_present(title_selector)
+        b.wait_present("{0} .list-group-item.active p".format(body_selector))
+
+        b.click("{0} .list-group-item p:contains('None')".format(body_selector))
+        b.wait_present("{0} .list-group-item.active p:contains('None')".format(body_selector))
+        b.click("{0} button.apply".format(body_selector))
+        b.wait_not_present(title_selector)
+
+        b.wait_text('#system-info-performance a.action-trigger', "none")
+
+        # Check the status of tuned, it should show disabled
+        output = m.execute("tuned-adm active 2>&1 || true")
+        self.assertIn("No current active profile", output)
+        output = m.execute("systemctl status tuned")
+        self.assertIn("disabled;", output)
+
+        # Click on the button again
+        b.click('#system-info-performance a.action-trigger')
+        b.wait_present(title_selector)
+
+        # Tuned should still be disabled
+        output = m.execute("systemctl status tuned")
+        self.assertIn("disabled;", output)
+
+if __name__ == '__main__':
+    test_main()

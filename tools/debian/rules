@@ -1,0 +1,70 @@
+#!/usr/bin/make -f
+
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+# only build cockpit-pcp if pcp is available
+ifneq ($(shell dpkg -s libpcp3-dev >/dev/null 2>&1 && echo yes),yes)
+	export DH_OPTIONS = -Ncockpit-pcp
+	CONFIG_OPTIONS = --disable-pcp
+endif
+
+%:
+	dh $@ --with=systemd,autoreconf
+
+# Apply patches using git in order to support binary patches. Note that
+# we also reset mtimes since patches should be "complete" and include both
+# generated and source file changes.
+# Keep this in sync with tools/cockpit.spec.
+debian/git-patches-applied:
+	set -ex; if [ -d debian/git-patches ]; then \
+		git init; \
+		git config user.email "unused@example.com"; git config user.name "Unused"; \
+		git config core.autocrlf false; git config core.safecrlf false && git config gc.auto 0; \
+		git add -f . && git commit -a -q -m "Base" && git tag -a initial --message="initial"; \
+		git am --whitespace=nowarn debian/git-patches/*.patch; \
+		touch -r $$(git diff --name-only initial..HEAD) .git; \
+	fi
+	touch $@
+
+# unapply our git patches
+override_dh_clean:
+	if [ -d .git ] && [ -e debian/git-patches-applied ]; then \
+		git reset --hard initial; \
+		git clean -fdx; \
+		rm -rf .git; \
+	fi
+	rm -f debian/git-patches-applied
+	dh_clean
+
+override_dh_auto_configure: debian/git-patches-applied
+	dh_auto_configure -- \
+		--with-networkmanager-needs-root=yes \
+		--with-cockpit-user=cockpit-ws \
+		--with-pamdir=/lib/$(DEB_HOST_MULTIARCH)/security \
+		--libexecdir=/usr/lib/cockpit $(CONFIG_OPTIONS)
+
+override_dh_systemd_enable:
+	dh_systemd_enable -p cockpit-ws --name=cockpit cockpit.socket
+
+override_dh_systemd_start:
+	dh_systemd_start -p cockpit-ws cockpit.socket
+
+override_dh_install:
+	# Debian/Ubuntu PAM config
+	mkdir -p debian/tmp/etc/pam.d
+	install -p -m 644 tools/cockpit.debian.pam debian/tmp/etc/pam.d/cockpit
+
+	# don't ship broken branding symlinks
+	for d in rhel fedora centos; do rm -r debian/tmp/usr/share/cockpit/branding/$$d; done
+	dpkg-vendor --derives-from ubuntu || rm -r debian/tmp/usr/share/cockpit/branding/ubuntu
+
+	# unpackaged modules
+	for m in kdump kubernetes ostree selinux sosreport subscriptions; do rm -r debian/tmp/usr/share/cockpit/$$m; done
+	# part of kubernetes
+	rm -f debian/tmp/usr/lib/cockpit/cockpit-stub
+
+	dh_install --fail-missing -Xusr/src/debug
+	make install-tests DESTDIR=debian/cockpit-tests
+
+override_dh_gencontrol:
+	dh_gencontrol -- -Vbridge:minversion="$(shell tools/min-base-version)"

@@ -1,0 +1,83 @@
+/*
+ * Full large size sidebar.
+ */
+.nav-sidebar {
+    width: unit(@sidebar-width-xl, px);
+    height: 100%;
+    position: fixed;
+    top: 0px;
+    z-index: 1;
+    overflow-x: hidden;
+    overflow-y: hidden;
+
+    a {
+        width: unit(@sidebar-width-xl, px) !important;
+    }
+    .list-group-item-value {
+        max-width: unit(@sidebar-width-xl - 80, px) !important;
+    }
+}
+
+#content {
+    margin-left:  0px;
+}
+
+.content-filter {
+    left: unit(@sidebar-width-xl, px);
+}
+
+/*
+ * Very small. Only icons
+ */
+@media (max-width: @screen-sm-min) {
+    .nav-sidebar {
+        width: unit(@sidebar-width-sm, px);
+        .list-group-item-value {
+            display: none !important;
+        }
+        a {
+            padding: 8px !important;
+            height: 40px !important;
+            width: unit(@sidebar-width-sm, px) !important;
+        }
+    }
+
+    #content {
+        margin-left: unit(@sidebar-width-sm + 20, px);
+    }
+
+    .content-filter {
+        left: unit(@sidebar-width-sm, px);
+    }
+}
+
+/*
+ * Short window. Text next to icons.
+ */
+@media (min-width: @screen-sm-min) and (max-width: @screen-lg-min), (min-width: @screen-sm-min) and (max-height: @sidebar-height-lg) {
+    .nav-sidebar {
+        width: unit(@sidebar-width-md, px);
+        a {
+            padding: 5px 8px !important;
+            height: 40px !important;
+            width: unit(@sidebar-width-md, px) !important;
+            i {
+                float: none !important;
+                margin-right: 0px !important;
+            }
+            span {
+                display: inline !important;
+                font-size: 12px;
+            }
+        }
+    }
+
+    #content {
+        margin-left: 0px; 
+    }
+
+    .content-filter {
+        left: unit(@sidebar-width-md, px);
+    }
+
+}

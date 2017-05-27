@@ -1,0 +1,164 @@
+Source: cockpit
+Section: admin
+Priority: optional
+Maintainer: Cockpit <cockpit@cockpit-project.org>
+Build-Depends: debhelper (>= 9.20141010),
+               dh-systemd,
+               dpkg-dev (>= 1.17.14),
+               dh-autoreconf,
+               autoconf,
+               automake,
+               git,
+               intltool,
+               libssh-dev,
+               zlib1g-dev,
+               libkrb5-dev,
+               libxslt1-dev,
+               libglib2.0-dev,
+               libsystemd-dev,
+               libpolkit-agent-1-dev,
+               libpcp3-dev,
+               libjson-glib-dev,
+               libpam0g-dev,
+               libpcp-import1-dev,
+               libpcp-pmda3-dev,
+               systemd,
+               xsltproc,
+               xmlto,
+               docbook-xsl,
+               glib-networking,
+               openssh-client <!nocheck>,
+               python,
+Standards-Version: 3.9.8
+Homepage: http://cockpit-project.org/
+#Vcs-Git: git://anonscm.debian.org/collab-maint/cockpit.git
+#Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/cockpit.git
+
+Package: cockpit
+Architecture: all
+Depends: ${misc:Depends},
+         cockpit-bridge (>= ${bridge:minversion}),
+         cockpit-dashboard (>= ${source:Version}),
+         cockpit-dashboard (<< ${source:Version}.1~),
+         cockpit-ws (>= ${source:Version}),
+         cockpit-ws (<< ${source:Version}.1~),
+         cockpit-system (= ${binary:Version}),
+Recommends: cockpit-storaged (= ${binary:Version}),
+            cockpit-networkmanager (= ${binary:Version})
+Suggests: cockpit-doc (= ${binary:Version}),
+          cockpit-pcp (>= ${source:Version}),
+          cockpit-docker (= ${binary:Version}),
+          xdg-utils,
+Description: User interface for Linux servers
+ Cockpit runs in a browser and can manage your network of GNU/Linux
+ machines.
+
+Package: cockpit-bridge
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         glib-networking
+Description: Cockpit bridge server-side component
+ The Cockpit bridge component installed server side and runs commands on
+ the system on behalf of the web based user interface.
+
+Package: cockpit-dashboard
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         cockpit-ws (= ${binary:Version})
+Provides: cockpit-ssh
+Replaces: cockpit-system (<< 128), cockpit-ws (<< 128)
+Description: Cockpit SSH remoting and dashboard
+ Cockpit support for remoting to other servers, bastion hosts, and
+ a basic dashboard.
+
+Package: cockpit-doc
+Section: doc
+Architecture: all
+Depends: ${misc:Depends}
+Description: Cockpit deployment and developer guide
+ The Cockpit Deployment and Developer Guide shows sysadmins how to deploy
+ Cockpit on their machines as well as helps developers who want to embed
+ or extend Cockpit.
+
+Package: cockpit-docker
+Architecture: all
+Depends: ${misc:Depends},
+         python3,
+         cockpit-bridge (>= ${bridge:minversion}),
+Recommends: docker.io (>= 1.3.0) | docker-engine (>= 1.3.0) | docker-ce (>= 1.3.0),
+Description: Cockpit user interface for Docker containers
+ The Cockpit components for interacting with Docker and user interface.
+
+Package: cockpit-machines
+Architecture: all
+Depends: ${misc:Depends},
+         libvirt-daemon-system
+Description: Cockpit user interface for virtual machines
+ The Cockpit components for managing virtual machines.
+
+Package: cockpit-networkmanager
+Architecture: all
+Depends: ${misc:Depends},
+         cockpit-bridge (>= ${bridge:minversion}),
+         network-manager
+Description: Cockpit user interface for networking
+ The Cockpit components for interacting with networking configuration.
+
+Package: cockpit-pcp
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         cockpit-bridge (>= ${bridge:minversion}),
+         pcp
+Description: Cockpit PCP integration
+ Cockpit support for reading PCP metrics and loading PCP archives.
+
+Package: cockpit-storaged
+Architecture: all
+Depends: ${misc:Depends},
+         udisks2 | storaged,
+         cockpit-bridge (>= ${bridge:minversion}),
+Description: Cockpit user interface for storage
+ The Cockpit components for interacting with storage.
+
+Package: cockpit-system
+Architecture: all
+Depends: ${misc:Depends},
+         cockpit-bridge (>= ${bridge:minversion}),
+         libpwquality-tools,
+         openssl,
+Provides: cockpit-realmd,
+          cockpit-shell,
+          cockpit-systemd,
+          cockpit-tuned,
+          cockpit-users
+Conflicts: cockpit-shell
+Replaces: cockpit-shell
+Description: Cockpit admin interface for a system
+ Cockpit admin interface package for configuring and
+ troubleshooting a system.
+
+Package: cockpit-tests
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         cockpit-system (>= ${source:Version}),
+         openssh-client
+Conflicts: cockpit-test-assets
+Replaces: cockpit-test-assets
+Provides: cockpit-test-assets
+Description: Tests for Cockpit
+ This package contains tests and files used while testing Cockpit.
+ These files are not required for running Cockpit.
+
+Package: cockpit-ws
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         glib-networking,
+         adduser,
+Description: Cockpit Web Service
+ The Cockpit Web Service listens on the network, and authenticates
+ users.

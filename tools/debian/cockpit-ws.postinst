@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+adduser --system --group --home / --no-create-home cockpit-ws
+
+if ! dpkg-statoverride --list /usr/lib/cockpit/cockpit-session >/dev/null; then
+    dpkg-statoverride --update --add root cockpit-ws 4750 /usr/lib/cockpit/cockpit-session
+fi
+
+#DEBHELPER#
+
+# restart cockpit.service on package upgrades, if it's already running
+if [ -d /run/systemd/system ] && [ -n "$2" ]; then
+    deb-systemd-invoke try-restart cockpit.service >/dev/null || true
+fi
