@@ -33,16 +33,7 @@
     require('./kube-client-cockpit');
 
     /* The other angular modules */
-    require('./containers');
-    require('./dashboard');
-    require('./details');
-    require('./graphs');
-    require('./policy');
-    require('./projects');
-    require('./images');
-    require('./nodes');
     require('./topology');
-    require('./volumes');
 
     /* And the actual application */
     require('./app');
@@ -54,16 +45,7 @@
         'kubeClient',
         'kubeClient.cockpit',
         'kubernetes.app',
-        'kubernetes.graph',
-        'kubernetes.dashboard',
-        'kubernetes.containers',
-        'kubernetes.details',
         'kubernetes.topology',
-        'kubernetes.volumes',
-        'kubernetes.nodes',
-        'registry.images',
-        'registry.policy',
-        'registry.projects',
         'kubernetesUI'
     ])
 

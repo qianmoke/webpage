@@ -25,7 +25,6 @@
     require('kubernetes-topology-graph/dist/topology-graph.js');
 
     require('./kube-client');
-    require('./details');
 
     require('../views/topology-page.html');
 
@@ -42,7 +41,6 @@
         'ngRoute',
         'kubernetesUI',
         'kubeClient',
-        'kubernetes.details'
     ])
 
     .config(['$routeProvider',
@@ -180,6 +178,84 @@
             resized();
 
             ready = true;
+        }
+    ])
+
+.factory('itemActions', [
+        '$modal',
+        '$location',
+        function($modal, $location) {
+            function deleteItem(item) {
+                return $modal.open({
+                    animation: false,
+                    controller: 'ItemDeleteCtrl',
+                    templateUrl: 'views/item-delete.html',
+                    resolve: {
+                        dialogData: function() {
+                            return { item: item };
+                        }
+                    },
+                }).result;
+            }
+
+            function modifyRoute(item) {
+                return $modal.open({
+                    animation: false,
+                    controller: 'RouteModifyCtrl',
+                    templateUrl: 'views/route-modify.html',
+                    resolve: {
+                        dialogData: function() {
+                            return { item: item };
+                        }
+                    },
+                }).result;
+            }
+
+            function modifyRC(item) {
+                return $modal.open({
+                    animation: false,
+                    controller: 'RCModifyCtrl',
+                    templateUrl: 'views/replicationcontroller-modify.html',
+                    resolve: {
+                        dialogData: function() {
+                            return { item: item };
+                        }
+                    },
+                }).result;
+            }
+
+            function modifyService(item) {
+                return $modal.open({
+                    animation: false,
+                    controller: 'ServiceModifyCtrl',
+                    templateUrl: 'views/service-modify.html',
+                    resolve: {
+                        dialogData: function() {
+                            return { item: item };
+                        }
+                    },
+                }).result;
+            }
+
+            function navigate(path) {
+                var prefix = '/l';
+                path = path ? path : "";
+                if (!path)
+                    prefix = "/list";
+
+                if (path && path.indexOf('/') !== 0)
+                    prefix = prefix + '/';
+
+                $location.path(prefix + path);
+            }
+
+            return {
+                modifyRC: modifyRC,
+                modifyRoute: modifyRoute,
+                deleteItem: deleteItem,
+                modifyService: modifyService,
+                navigate: navigate,
+            };
         }
     ]);
 }());
